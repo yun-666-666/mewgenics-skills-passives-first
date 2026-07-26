@@ -27,8 +27,6 @@
 
 1. 已安装 **Mewjector 3.4 或更新版本**：游戏根目录（与 `Mewgenics.exe` 同级）需要有 Mewjector 的 `version.dll` 和 `chainloader.ini`。
 2. 已安装 **Mewtator 0.5.1 或更新版本**：用于加载数据 MOD。
-3. 当前 DLL 针对的游戏版本 SHA-256：
-   `C3A41E436A93FA58CD386EC46DAD5C2A6F21A583D33C3A57A15A2604C726439E`。
 
 ### 步骤
 
@@ -75,19 +73,9 @@ TestAtOrAboveLevel=0
 
 编辑 INI 前请先完全关闭游戏，然后重新启动。
 
-## 快速验证
-
-1. 在测试存档把 `DebugLog=1`、`TestAtOrAboveLevel=2`。
-2. 使用任意新猫升到 2 级；界面应显示骰子 `x3`。
-3. 检查日志：首次候选会显示两次 `7 -> 10`，随后是 `7 -> 1` 与 `7 -> 7`。
-4. 点击一次骰子，确认新候选回到普通属性奖励。
-5. 测试结束后把 `TestAtOrAboveLevel=0`。
-
 ## 兼容性与限制
 
 - 不要与 **Solo Leveling** 同时启用：两者都会修改同一条后期升级奖励生成路径。
-- DLL 启动时会校验两个目标函数的机器码签名。游戏更新后如果不匹配，它会写入 `Unsupported Mewgenics.exe build` 日志并自动不安装钩子，不会继续改写游戏内存。
-- 这是面向单机 MOD 使用的项目；请在游戏更新后重新验证。
 
 ## 从源码构建
 

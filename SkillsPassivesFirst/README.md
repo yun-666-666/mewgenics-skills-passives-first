@@ -25,23 +25,9 @@ rerolls on its level-up screen. It is separate because the game needs
 Mewtator's data-MOD loader for `.gon.merge` files; the DLL alone is loaded by
 Mewjector.
 
-## Quick test switch
-
-For a disposable test save, set `TestAtOrAboveLevel=2` and `DebugLog=1` in
-`SkillsPassivesFirst.ini`. The next level-up of a level-2-or-higher cat will
-exercise the same remapping logic and write each replacement to
-`mod_logs/chainloader.log`. This test override rewrites every reward request
-at the configured level, so restore `TestAtOrAboveLevel=0` before normal play.
-
 ## Requirements
 
-- Mewgenics build whose SHA-256 is
-  `C3A41E436A93FA58CD386EC46DAD5C2A6F21A583D33C3A57A15A2604C726439E`
 - Mewjector v3.4 or newer
-
-The DLL checks the two game function signatures before installing. A mismatch
-means it writes an `Unsupported Mewgenics.exe build` message and makes no game
-memory changes.
 
 ## Install
 

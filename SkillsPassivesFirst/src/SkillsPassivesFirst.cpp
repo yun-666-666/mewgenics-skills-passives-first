@@ -1,7 +1,6 @@
 #include <windows.h>
 
 #include <array>
-#include <cstring>
 #include <string>
 
 #include "mewjector.h"
@@ -12,17 +11,6 @@ constexpr char kOwner[] = "SkillsPassivesFirst";
 constexpr UINT_PTR kLevelUpEntryRva = 0x383880;
 constexpr UINT_PTR kRewardGeneratorRva = 0x37F7E0;
 constexpr int kMinimumSupportedLevel = 10;
-
-// These signatures are for Mewgenics.exe SHA-256
-// C3A41E436A93FA58CD386EC46DAD5C2A6F21A583D33C3A57A15A2604C726439E.
-constexpr std::array<unsigned char, 16> kLevelUpEntrySignature = {
-    0x88, 0x54, 0x24, 0x10, 0x55, 0x53, 0x56, 0x57,
-    0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8D,
-};
-constexpr std::array<unsigned char, 16> kRewardGeneratorSignature = {
-    0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83,
-    0xEC, 0x40, 0x48, 0x8B, 0xF9, 0x44, 0x89, 0x44,
-};
 
 struct Config {
     bool enabled = true;
@@ -68,10 +56,6 @@ void LoadConfig() {
     g_config.debugLog = GetPrivateProfileIntA("General", "DebugLog", 0, iniPath.c_str()) != 0;
     g_config.testAtOrAboveLevel = static_cast<int>(
         GetPrivateProfileIntA("General", "TestAtOrAboveLevel", 0, iniPath.c_str()));
-}
-
-bool MatchesSignature(UINT_PTR gameBase, UINT_PTR rva, const unsigned char* expected, size_t length) {
-    return std::memcmp(reinterpret_cast<const void*>(gameBase + rva), expected, length) == 0;
 }
 
 int ReadCurrentLevel(void* levelUpContext) {
@@ -167,12 +151,8 @@ DWORD WINAPI Initialize(void*) {
 
     LoadConfig();
     const UINT_PTR gameBase = g_mj.GetGameBase();
-    if (gameBase == 0 ||
-        !MatchesSignature(gameBase, kLevelUpEntryRva,
-                          kLevelUpEntrySignature.data(), kLevelUpEntrySignature.size()) ||
-        !MatchesSignature(gameBase, kRewardGeneratorRva,
-                          kRewardGeneratorSignature.data(), kRewardGeneratorSignature.size())) {
-        g_mj.Log(kOwner, "Unsupported Mewgenics.exe build: hooks were not installed.");
+    if (gameBase == 0) {
+        g_mj.Log(kOwner, "Could not resolve the Mewgenics.exe base address.");
         return 0;
     }
 
