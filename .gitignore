@@ -1,0 +1,22 @@
+# Codex work records and local backups
+.codex/
+
+# User-supplied reference material and local build dependencies
+Solo Leveling/
+vendor/
+*.zip
+
+# Local compiler output outside the release folder
+*.obj
+*.pdb
+*.exp
+*.lib
+
+# Game and MOD runtime logs
+mod_logs/
+
+# Editor and OS files
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini

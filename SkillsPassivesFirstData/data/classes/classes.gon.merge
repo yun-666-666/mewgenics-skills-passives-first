@@ -1,0 +1,9 @@
+// Match the vanilla class mechanism: level-up rerolls are innate passives.
+// Include Colorless so a cat that has no chosen combat class is covered too.
+Fighter { innate_passives { AddLevelUpRerolls 3 } }
+Hunter { innate_passives { AddLevelUpRerolls 3 } }
+Mage { innate_passives { AddLevelUpRerolls 3 } }
+Medic { innate_passives { AddLevelUpRerolls 3 } }
+Tank { innate_passives { AddLevelUpRerolls 3 } }
+Thief { innate_passives { AddLevelUpRerolls 3 } }
+Colorless { innate_passives { AddLevelUpRerolls 3 } }
