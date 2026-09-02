@@ -11,6 +11,8 @@ vendor/
 *.pdb
 *.exp
 *.lib
+/build/
+/dist/
 
 # Game and MOD runtime logs
 mod_logs/

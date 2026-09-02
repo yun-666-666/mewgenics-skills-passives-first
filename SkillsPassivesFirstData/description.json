@@ -1,7 +1,7 @@
 {
   "title": "Skills & Passives First - 3 Rerolls",
-  "description": "Gives every vanilla player class three native level-up rerolls, for testing the Skills & Passives First DLL mod.",
+  "description": "Gives every vanilla player class three native level-up rerolls for Skills & Passives First.",
   "author": "wordy + Codex",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "requirements": []
 }
