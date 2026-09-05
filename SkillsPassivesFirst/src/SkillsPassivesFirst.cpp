@@ -1,6 +1,9 @@
 #include <windows.h>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "mewjector.h"
@@ -8,9 +11,28 @@
 namespace {
 
 constexpr char kOwner[] = "SkillsPassivesFirst";
-constexpr UINT_PTR kLevelUpEntryRva = 0x383880;
-constexpr UINT_PTR kRewardGeneratorRva = 0x37F7E0;
 constexpr int kMinimumSupportedLevel = 10;
+
+// These signatures cover the stable function prologues and stop at the first
+// relative call. Supported public and beta builds can therefore be located
+// without trusting stale fixed RVAs.
+constexpr unsigned char kLevelUpEntrySignature[] = {
+    0x88, 0x54, 0x24, 0x10, 0x55, 0x53, 0x56, 0x57,
+    0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8D,
+    0xAC, 0x24, 0x30, 0xFF, 0xFF, 0xFF, 0x48, 0x81,
+    0xEC, 0xD0, 0x01, 0x00, 0x00, 0x48, 0x8B, 0xF1,
+    0x4C, 0x8D, 0xB1, 0x60, 0x03, 0x00, 0x00, 0x49,
+    0x8B, 0xCE, 0xE8,
+};
+constexpr unsigned char kRewardGeneratorSignature[] = {
+    0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83,
+    0xEC, 0x40, 0x48, 0x8B, 0xF9, 0x44, 0x89, 0x44,
+    0x24, 0x60, 0x33, 0xC9, 0xC7, 0x44, 0x24, 0x2C,
+    0x01, 0x00, 0x00, 0x00, 0x89, 0x4C, 0x24, 0x28,
+    0x48, 0x8B, 0xDA, 0x48, 0x89, 0x4C, 0x24, 0x30,
+    0xBA, 0x01, 0x00, 0x00, 0x00, 0x48, 0x8D, 0x4C,
+    0x24, 0x28, 0xE8,
+};
 
 struct Config {
     bool enabled = true;
@@ -35,6 +57,100 @@ Config g_config{};
 LevelUpEntryFn g_originalLevelUpEntry = nullptr;
 RewardGeneratorFn g_originalRewardGenerator = nullptr;
 thread_local LevelUpSession g_session{};
+
+bool IsReadable(const void* pointer, size_t byteCount) {
+    if (pointer == nullptr || byteCount == 0) {
+        return false;
+    }
+
+    auto current = reinterpret_cast<uintptr_t>(pointer);
+    if (byteCount > UINTPTR_MAX - current) {
+        return false;
+    }
+    const uintptr_t end = current + byteCount;
+
+    while (current < end) {
+        MEMORY_BASIC_INFORMATION memory{};
+        if (VirtualQuery(reinterpret_cast<const void*>(current), &memory, sizeof(memory)) == 0 ||
+            memory.State != MEM_COMMIT ||
+            (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+            return false;
+        }
+
+        const uintptr_t regionEnd =
+            reinterpret_cast<uintptr_t>(memory.BaseAddress) + memory.RegionSize;
+        if (regionEnd <= current) {
+            return false;
+        }
+        current = regionEnd < end ? regionEnd : end;
+    }
+    return true;
+}
+
+bool FindUniqueExecutablePattern(
+    UINT_PTR gameBase,
+    const unsigned char* pattern,
+    size_t patternSize,
+    UINT_PTR& matchedRva) {
+    if (gameBase == 0 || pattern == nullptr || patternSize == 0) {
+        return false;
+    }
+
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(gameBase);
+    if (!IsReadable(dos, sizeof(*dos)) || dos->e_magic != IMAGE_DOS_SIGNATURE ||
+        dos->e_lfanew <= 0) {
+        return false;
+    }
+
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(gameBase + dos->e_lfanew);
+    if (!IsReadable(nt, sizeof(*nt)) || nt->Signature != IMAGE_NT_SIGNATURE ||
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
+        nt->FileHeader.NumberOfSections == 0 || nt->FileHeader.NumberOfSections > 96) {
+        return false;
+    }
+
+    const size_t imageSize = nt->OptionalHeader.SizeOfImage;
+    const auto* section = IMAGE_FIRST_SECTION(nt);
+    if (!IsReadable(section, sizeof(*section) * nt->FileHeader.NumberOfSections)) {
+        return false;
+    }
+
+    UINT_PTR foundRva = 0;
+    unsigned int matchCount = 0;
+    for (unsigned int sectionIndex = 0;
+         sectionIndex < nt->FileHeader.NumberOfSections;
+         ++sectionIndex, ++section) {
+        if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
+            continue;
+        }
+
+        const size_t sectionStart = section->VirtualAddress;
+        const size_t sectionSize = section->Misc.VirtualSize;
+        if (sectionStart >= imageSize || sectionSize > imageSize - sectionStart ||
+            sectionSize < patternSize) {
+            continue;
+        }
+
+        const auto* bytes = reinterpret_cast<const unsigned char*>(gameBase + sectionStart);
+        if (!IsReadable(bytes, sectionSize)) {
+            continue;
+        }
+        for (size_t offset = 0; offset <= sectionSize - patternSize; ++offset) {
+            if (std::memcmp(bytes + offset, pattern, patternSize) == 0) {
+                foundRva = static_cast<UINT_PTR>(sectionStart + offset);
+                if (++matchCount > 1) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    if (matchCount != 1) {
+        return false;
+    }
+    matchedRva = foundRva;
+    return true;
+}
 
 std::string GetModuleDirectory() {
     char buffer[MAX_PATH]{};
@@ -62,14 +178,22 @@ int ReadCurrentLevel(void* levelUpContext) {
     if (levelUpContext == nullptr) {
         return 0;
     }
-
     auto* context = static_cast<unsigned char*>(levelUpContext);
+    if (!IsReadable(context + 0xA0, sizeof(void*))) {
+        return 0;
+    }
+
     void* cat = *reinterpret_cast<void**>(context + 0xA0);
     if (cat == nullptr) {
         return 0;
     }
+    auto* levelAddress = static_cast<unsigned char*>(cat) + 0xC30;
+    if (!IsReadable(levelAddress, sizeof(int))) {
+        return 0;
+    }
 
-    return *reinterpret_cast<int*>(static_cast<unsigned char*>(cat) + 0xC30);
+    const int level = *reinterpret_cast<int*>(levelAddress);
+    return level > 0 && level <= 1000 ? level : 0;
 }
 
 // The first two positions use the game's native mixed-upgrade request (kind 10).
@@ -156,17 +280,28 @@ DWORD WINAPI Initialize(void*) {
         return 0;
     }
 
-    void* levelUpEntryTrampoline = nullptr;
-    if (!g_mj.InstallHook(kLevelUpEntryRva, 0,
-                          reinterpret_cast<void*>(LevelUpEntryHook),
-                          &levelUpEntryTrampoline, 20, kOwner)) {
-        g_mj.Log(kOwner, "Could not install the level-up entry hook.");
+    UINT_PTR levelUpEntryRva = 0;
+    UINT_PTR rewardGeneratorRva = 0;
+    if (!FindUniqueExecutablePattern(
+            gameBase,
+            kLevelUpEntrySignature,
+            std::size(kLevelUpEntrySignature),
+            levelUpEntryRva) ||
+        !FindUniqueExecutablePattern(
+            gameBase,
+            kRewardGeneratorSignature,
+            std::size(kRewardGeneratorSignature),
+            rewardGeneratorRva)) {
+        g_mj.Log(kOwner,
+                 "Unsupported game build: target signatures were missing or ambiguous; no hooks installed.");
         return 0;
     }
-    g_originalLevelUpEntry = reinterpret_cast<LevelUpEntryFn>(levelUpEntryTrampoline);
 
+    // Install the passive reward hook first. If the entry hook cannot be
+    // installed afterward, this hook remains a no-op because no session can
+    // become active.
     void* rewardGeneratorTrampoline = nullptr;
-    if (!g_mj.InstallHook(kRewardGeneratorRva, 0,
+    if (!g_mj.InstallHook(rewardGeneratorRva, 0,
                           reinterpret_cast<void*>(RewardGeneratorHook),
                           &rewardGeneratorTrampoline, 20, kOwner)) {
         g_mj.Log(kOwner, "Could not install the reward generator hook.");
@@ -174,7 +309,20 @@ DWORD WINAPI Initialize(void*) {
     }
     g_originalRewardGenerator = reinterpret_cast<RewardGeneratorFn>(rewardGeneratorTrampoline);
 
-    g_mj.Log(kOwner, "Loaded. Late levels use native mixed upgrades; reroll persistence=%d.",
+    void* levelUpEntryTrampoline = nullptr;
+    if (!g_mj.InstallHook(levelUpEntryRva, 0,
+                          reinterpret_cast<void*>(LevelUpEntryHook),
+                          &levelUpEntryTrampoline, 20, kOwner)) {
+        g_mj.Log(kOwner,
+                 "Could not install the level-up entry hook; reward hook remains inactive pass-through.");
+        return 0;
+    }
+    g_originalLevelUpEntry = reinterpret_cast<LevelUpEntryFn>(levelUpEntryTrampoline);
+
+    g_mj.Log(kOwner,
+             "Loaded with signature-resolved hooks at entry=0x%llX reward=0x%llX; reroll persistence=%d.",
+             static_cast<unsigned long long>(levelUpEntryRva),
+             static_cast<unsigned long long>(rewardGeneratorRva),
              g_config.rerollKeepsPriority ? 1 : 0);
     return 0;
 }

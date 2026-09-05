@@ -1,6 +1,6 @@
 # Skills & Passives First - 3 Rerolls
 
-当前版本：**1.0.2**
+当前版本：**1.0.3**
 
 一个用于 **Mewgenics** 的双组件 MOD：
 
@@ -61,6 +61,10 @@ TestAtOrAboveLevel=0
 编辑 INI 前请完全关闭游戏，修改后重新启动。
 
 ## 兼容性
+
+支持当前 Steam 正式版；beta 使用同一组受验证的唯一机器码签名动态定位目标函数，不依赖容易失效的固定 RVA。
+
+游戏更新后若目标签名不再唯一匹配，DLL 会拒绝安装原生钩子并在 `mod_logs/chainloader.log` 记录 `Unsupported game build`，不会猜测偏移继续运行。
 
 不要与 **Solo Leveling** 同时启用：两者会修改同一条后期升级奖励生成路径。
 
