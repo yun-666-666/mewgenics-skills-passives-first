@@ -203,16 +203,19 @@ int ReadCurrentLevel(void* levelUpContext) {
 // game's normal fallback, leaving the fixed new-skill and stat requests to make
 // the requested one-upgrade / one-skill / two-stat layout. This also covers
 // passive upgrades such as Rat Style without hard-coding either category.
-int NextInitialLateLevelRewardKind() {
+int NextLateLevelRewardKind(int originalRewardKind) {
     constexpr std::array<int, 4> kInitialLayout = {
         10, // Mixed active/passive upgrade.
         10, // Mixed active/passive upgrade.
         1,  // New active skill (vanilla level-5 template).
         7,  // Original +1 stat request.
     };
-    const int kind = kInitialLayout[g_session.rewrittenRequestCount % kInitialLayout.size()];
+    const size_t slot = g_session.rewrittenRequestCount % kInitialLayout.size();
     ++g_session.rewrittenRequestCount;
-    return kind;
+    if (g_session.reroll && !g_config.rerollKeepsPriority && slot != 2) {
+        return originalRewardKind;
+    }
+    return kInitialLayout[slot];
 }
 
 void __fastcall LevelUpEntryHook(void* levelUpContext, unsigned char reroll) {
@@ -250,11 +253,10 @@ void* __fastcall RewardGeneratorHook(void* levelUpContext, void* output, int rew
     const bool appliesToThisRequest =
         g_config.enabled &&
         g_session.active &&
-        (isOfficialLateLevelRequest || isTestRequest) &&
-        (g_config.rerollKeepsPriority || !g_session.reroll);
+        (isOfficialLateLevelRequest || isTestRequest);
 
     if (appliesToThisRequest) {
-        selectedRewardKind = NextInitialLateLevelRewardKind();
+        selectedRewardKind = NextLateLevelRewardKind(rewardKind);
         if (g_config.debugLog) {
             g_mj.Log(kOwner, "Level %d %s%s: reward kind %d -> %d.",
                      g_session.level, g_session.reroll ? "reroll" : "initial",
