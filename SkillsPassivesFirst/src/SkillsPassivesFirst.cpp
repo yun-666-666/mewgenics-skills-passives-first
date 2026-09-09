@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <random>
 #include <string>
 
 #include "mewjector.h"
@@ -200,19 +201,24 @@ int ReadCurrentLevel(void* levelUpContext) {
 // It tries both active-skill and passive-upgrade pools and therefore counts their
 // remaining upgrades together. With two or more remaining upgrades, both slots
 // are upgrades; with exactly one, the exhausted second mixed request uses the
-// game's normal fallback, leaving the fixed new-skill and stat requests to make
-// the requested one-upgrade / one-skill / two-stat layout. This also covers
+// game's normal fallback, leaving the new active/passive and stat requests to make
+// the requested one-upgrade / one-new-option / two-stat layout. This also covers
 // passive upgrades such as Rat Style without hard-coding either category.
 int NextLateLevelRewardKind(int originalRewardKind) {
     constexpr std::array<int, 4> kInitialLayout = {
         10, // Mixed active/passive upgrade.
         10, // Mixed active/passive upgrade.
-        1,  // New active skill (vanilla level-5 template).
+        1,  // Third slot chooses between new active and passive below.
         7,  // Original +1 stat request.
     };
     const size_t slot = g_session.rewrittenRequestCount % kInitialLayout.size();
     ++g_session.rewrittenRequestCount;
-    if (g_session.reroll && !g_config.rerollKeepsPriority && slot != 2) {
+    if (slot == 2) {
+        thread_local std::mt19937 random{std::random_device{}()};
+        // Kind 13 uses the native new-passive pool, not passive upgrades (9).
+        return std::uniform_int_distribution<int>{0, 1}(random) == 0 ? 1 : 13;
+    }
+    if (g_session.reroll && !g_config.rerollKeepsPriority) {
         return originalRewardKind;
     }
     return kInitialLayout[slot];
