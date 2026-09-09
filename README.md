@@ -1,6 +1,6 @@
 # Skills & Passives First - 3 Rerolls
 
-当前版本：**1.0.4**
+当前版本：**1.0.5**
 
 一个用于 **Mewgenics** 的双组件 MOD：
 
